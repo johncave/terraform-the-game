@@ -1,0 +1,298 @@
+<template>
+  <div class="inventory-wrap">
+    <div class="panel-header">
+      <span class="panel-title">PLANET INVENTORY</span>
+      <div class="spacer"></div>
+      <span class="power-stat">
+        ⚡ {{ store.gameState?.power_generation ?? 0 }} MW
+      </span>
+    </div>
+
+    <div class="inventory-body">
+      <!-- Items -->
+      <section class="section">
+        <div class="section-header">
+          <span>RESOURCES</span>
+          <span class="item-count">{{ itemCount }} types</span>
+        </div>
+
+        <div v-if="hasItems" class="items-list">
+          <div v-for="(count, item) in nonZeroItems" :key="item" class="item-row">
+            <div class="item-header">
+              <span class="item-name">{{ formatItemName(item) }}</span>
+              <span class="item-count-val" :class="countClass(count)">
+                {{ count.toLocaleString() }} / 1000
+              </span>
+            </div>
+            <div class="progress-track">
+              <div
+                class="progress-fill"
+                :class="barClass(count)"
+                :style="{ width: barWidth(count) }"
+              ></div>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="empty-section">
+          <span class="empty-icon">□</span>
+          No resources collected yet
+        </div>
+      </section>
+
+      <!-- All items (zero counts) -->
+      <section v-if="zeroItems.length > 0" class="section">
+        <div class="section-header">
+          <span>AWAITING PRODUCTION</span>
+        </div>
+        <div class="zero-items">
+          <span v-for="item in zeroItems" :key="item" class="zero-chip">
+            {{ formatItemName(item) }}
+          </span>
+        </div>
+      </section>
+
+      <!-- Discovered Nodes -->
+      <section class="section">
+        <div class="section-header">
+          <span>DISCOVERED NODES</span>
+          <span class="item-count">{{ store.discoveredNodes.length }}</span>
+        </div>
+        <div v-if="store.discoveredNodes.length > 0" class="nodes-list">
+          <div v-for="node in store.discoveredNodes" :key="node" class="node-chip">
+            <span class="node-icon">◈</span>
+            {{ node }}
+          </div>
+        </div>
+        <div v-else class="empty-section">
+          <span class="empty-icon">◎</span>
+          No nodes discovered
+        </div>
+      </section>
+
+      <!-- Last tick -->
+      <div v-if="store.gameState?.last_tick" class="last-tick">
+        <span class="label">last tick:</span>
+        <span class="val">{{ formatTick(store.gameState.last_tick) }}</span>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { computed } from 'vue'
+import { useGameStore } from '../stores/game.js'
+
+const store = useGameStore()
+
+const MAX_CAPACITY = 1000
+
+const hasItems = computed(() => Object.values(store.inventory).some((v) => v > 0))
+
+const nonZeroItems = computed(() => {
+  const result = {}
+  for (const [k, v] of Object.entries(store.inventory)) {
+    if (v > 0) result[k] = v
+  }
+  return result
+})
+
+const zeroItems = computed(() => {
+  return Object.entries(store.inventory)
+    .filter(([, v]) => v === 0)
+    .map(([k]) => k)
+})
+
+const itemCount = computed(() => Object.keys(store.inventory).length)
+
+function formatItemName(key) {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+function barWidth(count) {
+  return `${Math.min((count / MAX_CAPACITY) * 100, 100)}%`
+}
+
+function barClass(count) {
+  const pct = count / MAX_CAPACITY
+  if (pct >= 0.9) return 'bar-red'
+  if (pct >= 0.7) return 'bar-yellow'
+  return 'bar-green'
+}
+
+function countClass(count) {
+  const pct = count / MAX_CAPACITY
+  if (pct >= 0.9) return 'count-red'
+  if (pct >= 0.7) return 'count-yellow'
+  return 'count-green'
+}
+
+function formatTick(tick) {
+  try {
+    return new Date(tick).toLocaleTimeString()
+  } catch {
+    return tick
+  }
+}
+</script>
+
+<style scoped>
+.inventory-wrap {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.panel-title { color: var(--color-purple); }
+.spacer { flex: 1; }
+
+.power-stat {
+  color: var(--color-yellow);
+  font-size: 11px;
+}
+
+.inventory-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Section */
+.section { display: flex; flex-direction: column; gap: 8px; }
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.item-count { font-size: 9px; color: var(--text-muted); }
+
+/* Items */
+.items-list { display: flex; flex-direction: column; gap: 8px; }
+
+.item-row { display: flex; flex-direction: column; gap: 3px; }
+
+.item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.item-name {
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.item-count-val {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.count-green { color: var(--color-green); }
+.count-yellow { color: var(--color-yellow); }
+.count-red { color: var(--color-red); }
+
+/* Progress bar */
+.progress-track {
+  height: 4px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+.bar-green { background: var(--color-green); }
+.bar-yellow { background: var(--color-yellow); }
+.bar-red { background: var(--color-red); }
+
+/* Zero items */
+.zero-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.zero-chip {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  padding: 2px 6px;
+}
+
+/* Nodes */
+.nodes-list { display: flex; flex-direction: column; gap: 4px; }
+
+.node-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--color-cyan);
+  padding: 3px 6px;
+  background: rgba(57, 197, 207, 0.05);
+  border: 1px solid rgba(57, 197, 207, 0.15);
+  border-radius: var(--radius-sm);
+}
+
+.node-icon { opacity: 0.6; }
+
+/* Empty state */
+.empty-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 8px 0;
+}
+
+.empty-icon { opacity: 0.4; }
+
+/* Last tick */
+.last-tick {
+  display: flex;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color);
+}
+
+.last-tick .label { text-transform: uppercase; letter-spacing: 0.05em; }
+.last-tick .val { color: var(--text-secondary); }
+</style>
