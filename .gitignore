@@ -5,6 +5,7 @@ frontend/dist/
 # Go build artifacts
 backend/server
 backend/*.exe
+backend/tmp
 
 # Env files
 .env
