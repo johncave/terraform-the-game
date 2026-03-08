@@ -1,0 +1,25 @@
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Go build artifacts
+backend/server
+backend/*.exe
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# Docker
+.docker/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

@@ -15,11 +15,6 @@ export const api = {
     return r.json()
   },
 
-  async getInventory(gameId) {
-    const r = await fetch(`${BASE_URL}/games/${gameId}/inventory`)
-    return r.json()
-  },
-
   async planFactory(gameId, factoryId, yaml) {
     const r = await fetch(`${BASE_URL}/games/${gameId}/factory/${factoryId}/plan`, {
       method: 'POST',
@@ -38,8 +33,8 @@ export const api = {
     return r.json()
   },
 
-  async getFactoryState(gameId, factoryId) {
-    const r = await fetch(`${BASE_URL}/games/${gameId}/factory/${factoryId}/state`)
+  async getFactory(gameId, factoryId) {
+    const r = await fetch(`${BASE_URL}/games/${gameId}/factory/${factoryId}`)
     return r.json()
   },
 

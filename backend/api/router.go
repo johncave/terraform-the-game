@@ -14,11 +14,11 @@ func NewRouter(database *db.DB, manager *engine.Manager) *mux.Router {
 	r.HandleFunc("/games", h.ListGames).Methods("GET")
 	r.HandleFunc("/games/{game_id}", h.GetGame).Methods("GET")
 
-	r.HandleFunc("/games/{game_id}/factories", h.ListFactories).Methods("GET")
-	r.HandleFunc("/games/{game_id}/factories/{factory_id}", h.GetFactory).Methods("GET")
-	r.HandleFunc("/games/{game_id}/factories/{factory_id}/plan", h.PlanFactory).Methods("POST")
-	r.HandleFunc("/games/{game_id}/factories/{factory_id}/apply", h.ApplyFactory).Methods("POST")
-	r.HandleFunc("/games/{game_id}/factories/{factory_id}/destroy", h.DestroyFactory).Methods("POST")
+	r.HandleFunc("/games/{game_id}/factory", h.ListFactories).Methods("GET")
+	r.HandleFunc("/games/{game_id}/factory/{factory_id}", h.GetFactory).Methods("GET")
+	r.HandleFunc("/games/{game_id}/factory/{factory_id}/plan", h.PlanFactory).Methods("POST")
+	r.HandleFunc("/games/{game_id}/factory/{factory_id}/apply", h.ApplyFactory).Methods("POST")
+	r.HandleFunc("/games/{game_id}/factory/{factory_id}/destroy", h.DestroyFactory).Methods("POST")
 
 	r.HandleFunc("/games/{game_id}/state", h.GetGameState).Methods("GET")
 	r.HandleFunc("/games/{game_id}/inventory", h.GetInventory).Methods("GET")
