@@ -39,7 +39,8 @@ export const useGameStore = defineStore('game', () => {
     if (!gameId.value) return
     try {
       gameState.value = await api.getGameState(gameId.value)
-      factories.value = (await api.listFactories(gameId.value)) || []
+      const factoriesData = await api.listFactories(gameId.value)
+      factories.value = factoriesData?.factories || []
     } catch (e) {
       log(`Error fetching state: ${e.message}`, 'error')
     }
