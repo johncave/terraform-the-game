@@ -7,8 +7,8 @@ services:
       POSTGRES_USER: terraform
       POSTGRES_PASSWORD: terraform
       POSTGRES_DB: terraform_game
-    ports:
-      - "5432:5432"
+    # ports:
+    #   - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -22,7 +22,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "8081:8080"
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -43,7 +43,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      VITE_API_URL: http://localhost:8080
+      VITE_API_URL: http://localhost:8081
     depends_on:
       - backend
 
