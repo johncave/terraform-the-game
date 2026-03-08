@@ -65,8 +65,8 @@ type Machine struct {
 	Status      MachineStatus    `json:"status"`
 	Routes      []Route          `json:"routes"`
 	FactoryID   string           `json:"factory_id"`
-	BuiltAt     *time.Time       `json:"built_at,omitempty"`
-	TickCounter int              `json:"tick_counter"`
+	BuiltAt          *time.Time `json:"built_at,omitempty"`
+	ProdAccumulator  float64    `json:"prod_accumulator"` // fractional production remainder carried across ticks
 }
 
 type PlanetInventory struct {

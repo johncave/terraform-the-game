@@ -48,33 +48,33 @@ func FastForward(state *models.GameState) bool {
 }
 
 func tickMiner(state *models.GameState, machine *models.Machine, elapsedSecs float64) bool {
-	itemsToProduceF := float64(models.MinerRate) / 60.0 * elapsedSecs
-	// Integer truncation is intentional: fractional items are deferred to the next tick.
-	itemsToProduce := int(itemsToProduceF)
-	if itemsToProduce <= 0 {
-		machine.TickCounter++
-		updateMinerStatus(machine)
-		return false
-	}
-
 	if len(machine.OutputSlots) == 0 {
 		updateMinerStatus(machine)
 		return false
 	}
 
-	outputItem := models.IronOre
-	for itemType := range machine.OutputSlots {
-		outputItem = models.ItemType(itemType)
-		break
+	// Accumulate fractional production so no items are lost between ticks.
+	machine.ProdAccumulator += float64(models.MinerRate) / 60.0 * elapsedSecs
+	itemsToProduce := int(machine.ProdAccumulator)
+	machine.ProdAccumulator -= float64(itemsToProduce)
+
+	if itemsToProduce <= 0 {
+		updateMinerStatus(machine)
+		return false
 	}
 
-	outSlot := machine.OutputSlots[string(outputItem)]
+	// Use the first configured output slot; miners carry their output item type
+	// in their OutputSlots map (set at parse/apply time), not hard-coded here.
+	var outputItem models.ItemType
+	var outSlot *models.Slot
+	for k, s := range machine.OutputSlots {
+		outputItem = models.ItemType(k)
+		outSlot = s
+		break
+	}
 	if outSlot == nil {
-		outSlot = &models.Slot{
-			ItemType: outputItem,
-			Capacity: models.StackHeight,
-		}
-		machine.OutputSlots[string(outputItem)] = outSlot
+		updateMinerStatus(machine)
+		return false
 	}
 
 	available := outSlot.Capacity - outSlot.Count
@@ -89,10 +89,7 @@ func tickMiner(state *models.GameState, machine *models.Machine, elapsedSecs flo
 	}
 
 	outSlot.Count += canProduce
-
-	// Route output
 	routeItems(state, machine, outputItem, canProduce)
-
 	updateMinerStatus(machine)
 	return canProduce > 0
 }
@@ -104,8 +101,11 @@ func tickProcessor(state *models.GameState, machine *models.Machine, elapsedSecs
 		return false
 	}
 
-	itemsToProduceF := float64(models.ProcessingRate) / 60.0 * elapsedSecs
-	itemsToProduce := int(itemsToProduceF)
+	// Accumulate fractional production so no craft cycles are lost between ticks.
+	machine.ProdAccumulator += float64(models.ProcessingRate) / 60.0 * elapsedSecs
+	itemsToProduce := int(machine.ProdAccumulator)
+	machine.ProdAccumulator -= float64(itemsToProduce)
+
 	if itemsToProduce <= 0 {
 		updateProcessorStatus(machine, recipe)
 		return false
