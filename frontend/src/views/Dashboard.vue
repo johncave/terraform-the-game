@@ -33,6 +33,7 @@
         <button class="btn btn-sm" @click="store.polling ? store.stopPolling() : store.startPolling()">
           {{ store.polling ? 'Pause' : 'Resume' }}
         </button>
+        <button class="btn btn-sm btn-codex" @click="showCodex = true">? Codex</button>
         <button class="btn btn-sm" @click="handleExit">Exit</button>
       </div>
     </header>
@@ -54,26 +55,31 @@
         <Terminal />
       </div>
 
-      <!-- Bottom Right: Inventory -->
+      <!-- Bottom Right: Planet Overview -->
       <div class="cell cell-inventory">
         <Inventory />
       </div>
     </main>
+
+    <!-- Codex overlay -->
+    <Codex v-if="showCodex" @close="showCodex = false" />
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useGameStore } from '../stores/game.js'
 import FactoryEditor from '../components/FactoryEditor.vue'
 import FactoryFlow from '../components/FactoryFlow.vue'
 import Terminal from '../components/Terminal.vue'
 import Inventory from '../components/Inventory.vue'
+import Codex from './Codex.vue'
 
 const route = useRoute()
 const router = useRouter()
 const store = useGameStore()
+const showCodex = ref(false)
 
 const visibleFactories = computed(() => {
   return (store.factories || []).filter((f) => f.id !== 'main')
@@ -215,6 +221,16 @@ function handleExit() {
 .btn-sm {
   padding: 3px 10px;
   font-size: 11px;
+}
+
+.btn-codex {
+  background: rgba(188, 140, 255, 0.08);
+  border-color: var(--color-purple);
+  color: var(--color-purple);
+}
+
+.btn-codex:hover {
+  background: rgba(188, 140, 255, 0.15);
 }
 
 /* 2x2 grid */

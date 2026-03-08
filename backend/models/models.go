@@ -97,15 +97,22 @@ func (pi *PlanetInventory) Remove(item ItemType, count int) bool {
 	return true
 }
 
+type NodeKind string
+
+const (
+	NodeKindIronOre NodeKind = "iron_ore"
+)
+
 type GameState struct {
-	GameID          uuid.UUID           `json:"game_id"`
-	Inventory       PlanetInventory     `json:"inventory"`
+	GameID          uuid.UUID         `json:"game_id"`
+	Inventory       PlanetInventory   `json:"inventory"`
 	Machines        map[string]*Machine `json:"machines"`
-	DiscoveredNodes []string            `json:"discovered_nodes"`
-	LastTick        time.Time           `json:"last_tick"`
-	PowerGeneration int                 `json:"power_generation"`
-	Explorers       int                 `json:"explorers_built"`
-	TickCount       int64               `json:"tick_count"`
+	DiscoveredNodes []string          `json:"discovered_nodes"`
+	NodeTypes       map[string]string `json:"node_types"` // node_id -> NodeKind
+	LastTick        time.Time         `json:"last_tick"`
+	PowerGeneration int               `json:"power_generation"`
+	Explorers       int               `json:"explorers_built"`
+	TickCount       int64             `json:"tick_count"`
 }
 
 type Factory struct {
@@ -182,13 +189,20 @@ func NewGameState(gameID uuid.UUID) *GameState {
 	return &GameState{
 		GameID: gameID,
 		Inventory: PlanetInventory{
+			// Start with enough iron plates to bootstrap the first factory.
+			// Iron ore is not a planet inventory item — it flows directly from
+			// miners into their output slots and onward through routes.
 			Items: map[ItemType]int{
-				IronOre: 500,
+				IronPlate: 20,
 			},
 		},
 		Machines:        make(map[string]*Machine),
 		DiscoveredNodes: []string{"node_alpha", "node_beta"},
-		LastTick:        time.Now(),
+		NodeTypes: map[string]string{
+			"node_alpha": string(NodeKindIronOre),
+			"node_beta":  string(NodeKindIronOre),
+		},
+		LastTick: time.Now(),
 	}
 }
 
@@ -216,10 +230,17 @@ func (gs *GameState) ApplyEvent(eventType string, payload []byte) {
 		}
 	case "NodeDiscovered":
 		var node struct {
-			NodeID string `json:"node_id"`
+			NodeID   string `json:"node_id"`
+			NodeType string `json:"node_type"`
 		}
 		if err := json.Unmarshal(payload, &node); err == nil {
 			gs.DiscoveredNodes = append(gs.DiscoveredNodes, node.NodeID)
+			if gs.NodeTypes == nil {
+				gs.NodeTypes = make(map[string]string)
+			}
+			if node.NodeType != "" {
+				gs.NodeTypes[node.NodeID] = node.NodeType
+			}
 		}
 	}
 }

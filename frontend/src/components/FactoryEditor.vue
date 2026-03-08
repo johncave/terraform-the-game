@@ -61,7 +61,8 @@ const planStatus = ref(null)
 let monacoEditor = null
 
 const GENESIS_YAML = `# Terraform: The Game - Genesis Configuration
-# This is your first factory. Modify and apply it!
+# Full starter chain: miner → smelter → builder → inventory
+# Cost: 3 iron_plate (smelter) + 5 iron_plate (builder) = 8 total
 resources:
   miner:
     iron_extractor:
@@ -71,6 +72,11 @@ resources:
   smelter:
     iron_processor:
       recipe: "iron_ingot"
+      outputs:
+        - target: "builder.plate_press.inputs.iron_ingot"
+  builder:
+    plate_press:
+      recipe: "iron_plate"
       outputs:
         - target: "inventory"
 `

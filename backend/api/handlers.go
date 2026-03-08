@@ -366,6 +366,7 @@ func (h *Handlers) ApplyFactory(w http.ResponseWriter, r *http.Request) {
 		"factory_id": factoryID,
 		"machines":   result.Machines,
 		"status":     "applied",
+		"success":    true,
 		"inventory":  state.Inventory,
 	})
 }

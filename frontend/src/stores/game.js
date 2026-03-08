@@ -108,6 +108,11 @@ export const useGameStore = defineStore('game', () => {
     return gameState.value.discovered_nodes || []
   })
 
+  const nodeTypes = computed(() => {
+    if (!gameState.value) return {}
+    return gameState.value.node_types || {}
+  })
+
   return {
     gameId,
     gameState,
@@ -125,6 +130,7 @@ export const useGameStore = defineStore('game', () => {
     log,
     machines,
     inventory,
-    discoveredNodes
+    discoveredNodes,
+    nodeTypes
   }
 })

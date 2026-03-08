@@ -1,10 +1,13 @@
 <template>
   <div class="inventory-wrap">
     <div class="panel-header">
-      <span class="panel-title">PLANET INVENTORY</span>
+      <span class="panel-title">PLANET OVERVIEW</span>
       <div class="spacer"></div>
-      <span class="power-stat">
+      <span class="power-stat" title="Power generation">
         ⚡ {{ store.gameState?.power_generation ?? 0 }} MW
+      </span>
+      <span class="explorer-stat" title="Explorers deployed">
+        🤖 {{ store.gameState?.explorers_built ?? 0 }}
       </span>
     </div>
 
@@ -59,9 +62,12 @@
           <span class="item-count">{{ store.discoveredNodes.length }}</span>
         </div>
         <div v-if="store.discoveredNodes.length > 0" class="nodes-list">
-          <div v-for="node in store.discoveredNodes" :key="node" class="node-chip">
+          <div v-for="node in store.discoveredNodes" :key="node" class="node-row">
             <span class="node-icon">◈</span>
-            {{ node }}
+            <span class="node-id">{{ node }}</span>
+            <span class="node-type-badge" :class="`node-type-${store.nodeTypes[node] || 'unknown'}`">
+              {{ formatNodeType(store.nodeTypes[node]) }}
+            </span>
           </div>
         </div>
         <div v-else class="empty-section">
@@ -107,6 +113,11 @@ const itemCount = computed(() => Object.keys(store.inventory).length)
 
 function formatItemName(key) {
   return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+function formatNodeType(type) {
+  if (!type) return 'unknown'
+  return type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 function barWidth(count) {
@@ -164,6 +175,11 @@ function formatTick(tick) {
 
 .power-stat {
   color: var(--color-yellow);
+  font-size: 11px;
+}
+
+.explorer-stat {
+  color: var(--color-cyan);
   font-size: 11px;
 }
 
@@ -256,19 +272,49 @@ function formatTick(tick) {
 /* Nodes */
 .nodes-list { display: flex; flex-direction: column; gap: 4px; }
 
-.node-chip {
+.node-row {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 11px;
-  color: var(--color-cyan);
-  padding: 3px 6px;
+  padding: 4px 6px;
   background: rgba(57, 197, 207, 0.05);
   border: 1px solid rgba(57, 197, 207, 0.15);
   border-radius: var(--radius-sm);
 }
 
-.node-icon { opacity: 0.6; }
+.node-icon {
+  color: var(--color-cyan);
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.node-id {
+  color: var(--color-cyan);
+  flex: 1;
+}
+
+.node-type-badge {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.node-type-iron_ore {
+  background: rgba(248, 140, 0, 0.12);
+  color: #f8a030;
+  border: 1px solid rgba(248, 140, 0, 0.25);
+}
+
+.node-type-unknown {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+}
 
 /* Empty state */
 .empty-section {
