@@ -7,6 +7,16 @@ import (
 	"github.com/johncave/terraform-the-game/models"
 )
 
+// machineProcessOrder defines the order in which machine types are ticked each game tick.
+// Processing in pipeline order (miners before smelters before builders/assemblers) ensures
+// that items flow through the full chain in a single tick.
+var machineProcessOrder = []models.MachineType{
+	models.MachineTypeMiner,
+	models.MachineTypeSmelter,
+	models.MachineTypeBuilder,
+	models.MachineTypeAssembler,
+}
+
 // Tick processes one second of game time for the given state.
 // It mutates state in-place and returns whether anything changed.
 func Tick(state *models.GameState, elapsed time.Duration) bool {
@@ -16,19 +26,54 @@ func Tick(state *models.GameState, elapsed time.Duration) bool {
 		return false
 	}
 
+	// --- Power budget ---
+	// Calculate total demand from all active (built) machines + explorers.
+	totalDemandMW := 0
+	for _, machine := range state.Machines {
+		if machine.BuiltAt != nil && !machine.BuiltAt.After(now) {
+			totalDemandMW += machine.PowerUsageMW
+		}
+	}
+	totalDemandMW += state.Explorers * models.ExplorerConsumptionMW
+	state.PowerConsumptionMW = totalDemandMW
+
+	availableMW := state.TotalPowerAvailableMW()
+
+	// If demand exceeds supply, trip the grid. All machines stop.
+	if totalDemandMW > availableMW && !state.PowerTripped {
+		state.PowerTripped = true
+	}
+	if state.PowerTripped {
+		// Mark all active machines RED while power is tripped.
+		for _, machine := range state.Machines {
+			if machine.BuiltAt != nil && !machine.BuiltAt.After(now) {
+				machine.Status = models.StatusRed
+			}
+		}
+		state.LastTick = now
+		state.TickCount++
+		return true
+	}
+
 	changed := false
 
-	// Process each machine
-	for _, machine := range state.Machines {
-		if machine.BuiltAt == nil || machine.BuiltAt.After(now) {
-			continue // not yet built
-		}
+	// Process each machine TYPE in pipeline order so items flow through the
+	// full chain (miners → smelters → builders/assemblers) in a single tick.
+	for _, machineType := range machineProcessOrder {
+		for _, machine := range state.Machines {
+			if machine.Type != machineType {
+				continue
+			}
+			if machine.BuiltAt == nil || machine.BuiltAt.After(now) {
+				continue // not yet built
+			}
 
-		switch machine.Type {
-		case models.MachineTypeMiner:
-			changed = tickMiner(state, machine, elapsedSecs) || changed
-		case models.MachineTypeSmelter, models.MachineTypeBuilder, models.MachineTypeAssembler:
-			changed = tickProcessor(state, machine, elapsedSecs) || changed
+			switch machineType {
+			case models.MachineTypeMiner:
+				changed = tickMiner(state, machine, elapsedSecs) || changed
+			case models.MachineTypeSmelter, models.MachineTypeBuilder, models.MachineTypeAssembler:
+				changed = tickProcessor(state, machine, elapsedSecs) || changed
+			}
 		}
 	}
 
@@ -162,12 +207,10 @@ func processOnce(state *models.GameState, machine *models.Machine, recipe models
 		// Route immediately
 		routeItems(state, machine, itemType, amount)
 
-		// Track special items
-		if itemType == models.SolarPanel {
-			state.PowerGeneration++
-		}
-		if itemType == models.Explorer {
-			state.Explorers++
+		// Apply generic item effects (power generation, explorer count, etc.)
+		if effect, hasEffect := models.ItemEffects[itemType]; hasEffect {
+			state.PowerGeneration += effect.PowerGenMW * amount
+			state.Explorers += effect.Explorers * amount
 		}
 	}
 
@@ -277,3 +320,4 @@ func updateProcessorStatus(machine *models.Machine, recipe models.Recipe) {
 
 	machine.Status = models.StatusGreen
 }
+

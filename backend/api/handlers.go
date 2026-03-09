@@ -260,12 +260,16 @@ func (h *Handlers) PlanFactory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	validationErrors := parser.Validate(result, state)
+	diff := parser.Diff(factoryID, result, state)
 
 	resp := map[string]interface{}{
 		"factory_id": factoryID,
 		"machines":   result.Machines,
 		"valid":      len(validationErrors) == 0,
 		"errors":     validationErrors,
+		"to_add":     diff.ToAdd,
+		"to_change":  diff.ToChange,
+		"to_destroy": diff.ToDestroy,
 	}
 
 	h.manager.Touch(gameID)
@@ -273,6 +277,7 @@ func (h *Handlers) PlanFactory(w http.ResponseWriter, r *http.Request) {
 }
 
 // ApplyFactory applies a factory YAML: validates, deducts costs, registers machines.
+// Machines removed from the YAML are destroyed. Machines with changed config are updated.
 func (h *Handlers) ApplyFactory(w http.ResponseWriter, r *http.Request) {
 	if h.db == nil {
 		writeError(w, http.StatusServiceUnavailable, "database not available")
@@ -311,6 +316,7 @@ func (h *Handlers) ApplyFactory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Run plan (validation) first — apply always validates before acting.
 	validationErrors := parser.Validate(result, state)
 	if len(validationErrors) > 0 {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]interface{}{
@@ -320,10 +326,18 @@ func (h *Handlers) ApplyFactory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Apply: deduct costs and set BuiltAt
+	// Compute diff to know what to destroy
+	diff := parser.Diff(factoryID, result, state)
+
+	// Destroy machines that are no longer in the YAML
+	for _, key := range diff.ToDestroy {
+		delete(state.Machines, key)
+	}
+
+	// Apply: deduct costs and set BuiltAt on new machines; update changed machines in-place
 	parser.Apply(result, state)
 
-	// Register machines in game state
+	// Register/update machines in game state
 	for _, m := range result.Machines {
 		key := string(m.Type) + "." + m.ID
 		state.Machines[key] = m
@@ -341,9 +355,9 @@ func (h *Handlers) ApplyFactory(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt: now,
 	}
 	// Check if factory already exists
-	existing, _ := h.db.GetFactory(gameID, factoryID)
-	if existing != nil {
-		factory.CreatedAt = existing.CreatedAt
+	existingFactory, _ := h.db.GetFactory(gameID, factoryID)
+	if existingFactory != nil {
+		factory.CreatedAt = existingFactory.CreatedAt
 	}
 
 	if err := h.db.SaveFactory(gameID, factory); err != nil {
@@ -367,7 +381,45 @@ func (h *Handlers) ApplyFactory(w http.ResponseWriter, r *http.Request) {
 		"machines":   result.Machines,
 		"status":     "applied",
 		"success":    true,
+		"to_add":     diff.ToAdd,
+		"to_change":  diff.ToChange,
+		"to_destroy": diff.ToDestroy,
 		"inventory":  state.Inventory,
+	})
+}
+
+// ResetPowerGrid clears the power trip flag so machines can resume.
+func (h *Handlers) ResetPowerGrid(w http.ResponseWriter, r *http.Request) {
+	gameID, err := parseGameID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid game_id")
+		return
+	}
+
+	state, err := h.manager.GetState(gameID)
+	if err != nil {
+		if h.db == nil {
+			writeError(w, http.StatusServiceUnavailable, "database not available")
+			return
+		}
+		state, err = h.db.GetGame(gameID)
+		if err != nil {
+			writeError(w, http.StatusNotFound, "game not found")
+			return
+		}
+	}
+
+	state.PowerTripped = false
+
+	if h.db != nil {
+		_ = h.db.SaveSnapshot(state)
+	}
+	h.manager.UpdateState(state)
+	h.manager.Touch(gameID)
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":        "power_reset",
+		"power_tripped": false,
 	})
 }
 

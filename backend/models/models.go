@@ -10,6 +10,11 @@ import (
 const StackHeight = 100
 const MaxStacksPerItem = 10
 
+// Power constants
+const BasePowerMW = 10        // Starting power available (MW)
+const SolarPanelGenMW = 5     // MW generated per solar panel built
+const ExplorerConsumptionMW = 2 // MW consumed per active explorer
+
 type ItemType string
 
 const (
@@ -56,17 +61,18 @@ type Route struct {
 }
 
 type Machine struct {
-	ID          string           `json:"id"`
-	Type        MachineType      `json:"type"`
-	Recipe      string           `json:"recipe,omitempty"`
-	NodeID      string           `json:"node_id,omitempty"`
-	InputSlots  map[string]*Slot `json:"input_slots"`
-	OutputSlots map[string]*Slot `json:"output_slots"`
-	Status      MachineStatus    `json:"status"`
-	Routes      []Route          `json:"routes"`
-	FactoryID   string           `json:"factory_id"`
-	BuiltAt          *time.Time `json:"built_at,omitempty"`
-	ProdAccumulator  float64    `json:"prod_accumulator"` // fractional production remainder carried across ticks
+	ID              string           `json:"id"`
+	Type            MachineType      `json:"type"`
+	Recipe          string           `json:"recipe,omitempty"`
+	NodeID          string           `json:"node_id,omitempty"`
+	InputSlots      map[string]*Slot `json:"input_slots"`
+	OutputSlots     map[string]*Slot `json:"output_slots"`
+	Status          MachineStatus    `json:"status"`
+	Routes          []Route          `json:"routes"`
+	FactoryID       string           `json:"factory_id"`
+	PowerUsageMW    int              `json:"power_usage_mw"`   // MW draw of this machine
+	BuiltAt         *time.Time       `json:"built_at,omitempty"`
+	ProdAccumulator float64          `json:"prod_accumulator"` // fractional production remainder carried across ticks
 }
 
 type PlanetInventory struct {
@@ -104,15 +110,22 @@ const (
 )
 
 type GameState struct {
-	GameID          uuid.UUID         `json:"game_id"`
-	Inventory       PlanetInventory   `json:"inventory"`
-	Machines        map[string]*Machine `json:"machines"`
-	DiscoveredNodes []string          `json:"discovered_nodes"`
-	NodeTypes       map[string]string `json:"node_types"` // node_id -> NodeKind
-	LastTick        time.Time         `json:"last_tick"`
-	PowerGeneration int               `json:"power_generation"`
-	Explorers       int               `json:"explorers_built"`
-	TickCount       int64             `json:"tick_count"`
+	GameID             uuid.UUID           `json:"game_id"`
+	Inventory          PlanetInventory     `json:"inventory"`
+	Machines           map[string]*Machine `json:"machines"`
+	DiscoveredNodes    []string            `json:"discovered_nodes"`
+	NodeTypes          map[string]string   `json:"node_types"` // node_id -> NodeKind
+	LastTick           time.Time           `json:"last_tick"`
+	PowerGeneration    int                 `json:"power_generation"`     // number of solar panels built
+	PowerConsumptionMW int                 `json:"power_consumption_mw"` // last-tick total demand (informational)
+	PowerTripped       bool                `json:"power_tripped"`        // true when demand > supply
+	Explorers          int                 `json:"explorers_built"`
+	TickCount          int64               `json:"tick_count"`
+}
+
+// TotalPowerAvailableMW returns the total MW available for the current game state.
+func (gs *GameState) TotalPowerAvailableMW() int {
+	return BasePowerMW + gs.PowerGeneration*SolarPanelGenMW
 }
 
 type Factory struct {
@@ -184,6 +197,27 @@ const MinerRate = 120
 
 // ProcessingRate is the number of items a processing machine (smelter/builder/assembler) produces per minute.
 const ProcessingRate = 30
+
+// ItemEffect describes the side effects of producing an item (beyond routing it to inventory).
+type ItemEffect struct {
+	PowerGenMW int // permanent MW added to power generation when this item is produced
+	Explorers  int // explorer count increment when this item is produced
+}
+
+// ItemEffects maps output item types to their side effects.
+// This makes adding new "special" item types generic — just add an entry here.
+var ItemEffects = map[ItemType]ItemEffect{
+	SolarPanel: {PowerGenMW: SolarPanelGenMW},
+	Explorer:   {Explorers: 1},
+}
+
+// MachinePowerUsageMW is the ongoing power draw of each machine type while active.
+var MachinePowerUsageMW = map[MachineType]int{
+	MachineTypeMiner:     2,
+	MachineTypeSmelter:   3,
+	MachineTypeBuilder:   3,
+	MachineTypeAssembler: 5,
+}
 
 func NewGameState(gameID uuid.UUID) *GameState {
 	return &GameState{

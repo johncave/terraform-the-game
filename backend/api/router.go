@@ -22,6 +22,7 @@ func NewRouter(database *db.DB, manager *engine.Manager) *mux.Router {
 
 	r.HandleFunc("/games/{game_id}/state", h.GetGameState).Methods("GET")
 	r.HandleFunc("/games/{game_id}/inventory", h.GetInventory).Methods("GET")
+	r.HandleFunc("/games/{game_id}/power/reset", h.ResetPowerGrid).Methods("POST")
 
 	return r
 }
