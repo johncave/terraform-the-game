@@ -64,6 +64,19 @@
             <span class="info-label">Power draw</span>
             <span class="info-val power-val">⚡ {{ selectedMachine.power_usage_mw }} MW</span>
           </div>
+          <!-- Construction status -->
+          <div v-if="selectedMachine.type !== 'inventory'" class="info-row">
+            <span class="info-label">Construction</span>
+            <span
+              class="info-val"
+              :class="isUnderConstruction ? 'status-val-yellow' : 'status-val-green'"
+            >{{ constructionLabel }}</span>
+          </div>
+          <!-- Throughput rate -->
+          <div v-if="ratePerMinute !== null" class="info-row">
+            <span class="info-label">Throughput</span>
+            <span class="info-val">{{ ratePerMinute }}/min</span>
+          </div>
           <div class="info-row">
             <span class="info-label">Status</span>
             <span class="info-val" :class="`status-val-${(selectedMachine.status || 'IDLE').toLowerCase()}`">
@@ -146,9 +159,19 @@ const TYPE_COLUMNS = {
 const COL_WIDTH = 220
 const ROW_HEIGHT = 120
 
+// Recipe rates (items per minute) used to display throughput in the detail drawer.
+const RECIPE_RATES = {
+  miner: 120,    // miners always produce at 120/min
+  default: 30    // all processors run at 30/min
+}
+
 function getColumn(type) {
   return TYPE_COLUMNS[type] ?? 2
 }
+
+// Track the set of machine keys to detect structural changes (adds/removes).
+// fitView is only called when the set changes, preserving the user's pan/zoom.
+const knownMachineKeys = ref(new Set())
 
 const flowNodes = computed(() => {
   const machines = store.machines
@@ -255,12 +278,22 @@ function onNodesReady() {
 
 watch(
   () => store.machines,
-  () => {
-    setTimeout(() => fitView({ padding: 0.1 }), 100)
+  (newMachines) => {
+    // Only call fitView when machines are added or removed (structural change).
+    // This preserves the user's pan/zoom on routine 1-second data refreshes.
+    const newKeys = new Set(Object.keys(newMachines))
+    const structureChanged =
+      newKeys.size !== knownMachineKeys.value.size ||
+      [...newKeys].some((k) => !knownMachineKeys.value.has(k))
+    if (structureChanged) {
+      knownMachineKeys.value = newKeys
+      setTimeout(() => fitView({ padding: 0.1 }), 100)
+    }
+
     // Keep selected machine data up-to-date
     if (selectedMachine.value) {
       const key = selectedMachine.value.machineKey
-      const updated = store.machines[key]
+      const updated = newMachines[key]
       if (updated) {
         selectedMachine.value = {
           ...selectedMachine.value,
@@ -281,6 +314,30 @@ const hasInputSlots = computed(() =>
 const hasOutputSlots = computed(() =>
   selectedMachine.value && Object.keys(selectedMachine.value.output_slots || {}).length > 0
 )
+
+// Returns true if the machine is still under construction.
+const isUnderConstruction = computed(() => {
+  if (!selectedMachine.value?.built_at) return false
+  return new Date(selectedMachine.value.built_at) > new Date()
+})
+
+// Construction label: "Built" or a countdown to completion.
+const constructionLabel = computed(() => {
+  if (!selectedMachine.value?.built_at) return 'Unknown'
+  const builtAt = new Date(selectedMachine.value.built_at)
+  if (builtAt <= new Date()) return 'Built'
+  const secsLeft = Math.ceil((builtAt - new Date()) / 1000)
+  return `Building… (${secsLeft}s)`
+})
+
+// Items per minute for the selected machine's recipe/type.
+const ratePerMinute = computed(() => {
+  if (!selectedMachine.value) return null
+  const type = selectedMachine.value.type
+  if (type === 'miner') return RECIPE_RATES.miner
+  if (type === 'inventory') return null
+  return RECIPE_RATES.default
+})
 
 function slotPct(slot) {
   if (!slot || slot.capacity === 0) return 0

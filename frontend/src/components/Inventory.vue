@@ -3,8 +3,11 @@
     <div class="panel-header">
       <span class="panel-title">PLANET OVERVIEW</span>
       <div class="spacer"></div>
-      <span class="power-stat" title="Power generation">
-        ⚡ {{ store.gameState?.power_generation ?? 0 }} MW
+      <span class="power-stat" title="Total power available">
+        ⚡ {{ powerAvailableMW }} MW
+      </span>
+      <span v-if="store.gameState?.power_generation > 0" class="solar-stat" title="Solar panels built">
+        ☀ {{ store.gameState.power_generation }}
       </span>
       <span class="explorer-stat" title="Explorers deployed">
         🤖 {{ store.gameState?.explorers_built ?? 0 }}
@@ -251,6 +254,11 @@ async function handlePowerReset() {
 .spacer { flex: 1; }
 
 .power-stat {
+  color: var(--color-yellow);
+  font-size: 11px;
+}
+
+.solar-stat {
   color: var(--color-yellow);
   font-size: 11px;
 }

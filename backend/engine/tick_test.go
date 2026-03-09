@@ -389,3 +389,243 @@ func TestExplorerConsumptionContributesToPowerDemand(t *testing.T) {
 		t.Error("expected power trip when explorer consumption exceeds supply")
 	}
 }
+
+// applyGenesisInstant applies the genesis factory and stores machines in state.
+// Unlike buildGenesisFactory, it does NOT backdate BuiltAt – machines use the
+// instant BuiltAt set by parser.Apply (i.e. time.Now()), so they are live on the
+// very first tick.
+func applyGenesisInstant(t *testing.T, state *models.GameState) {
+	t.Helper()
+	const yaml = `
+resources:
+  miner:
+    iron_extractor:
+      node_id: "node_alpha"
+      outputs:
+        - target: "smelter.iron_processor.inputs.iron_ore"
+  smelter:
+    iron_processor:
+      recipe: "iron_ingot"
+      outputs:
+        - target: "builder.plate_press.inputs.iron_ingot"
+  builder:
+    plate_press:
+      recipe: "iron_plate"
+      outputs:
+        - target: "inventory"
+`
+	result, err := parser.Parse("genesis", yaml)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	if errs := parser.Validate(result, state); len(errs) > 0 {
+		t.Fatalf("validation errors: %v", errs)
+	}
+	parser.Apply(result, state)
+	for _, m := range result.Machines {
+		key := string(m.Type) + "." + m.ID
+		state.Machines[key] = m
+	}
+}
+
+// TestInstantBuildPowerConsumption verifies that after applying the genesis factory
+// (with instant BuiltAt), the first tick immediately reflects full power consumption
+// (miner=2MW + smelter=3MW + builder=3MW = 8MW total).
+func TestInstantBuildPowerConsumption(t *testing.T) {
+	state := newState()
+	applyGenesisInstant(t, state)
+
+	engine.Tick(state, time.Second)
+
+	expected := models.MachinePowerUsageMW[models.MachineTypeMiner] +
+		models.MachinePowerUsageMW[models.MachineTypeSmelter] +
+		models.MachinePowerUsageMW[models.MachineTypeBuilder]
+	// miner=2 + smelter=3 + builder=3 = 8 MW
+	if state.PowerConsumptionMW != expected {
+		t.Errorf("expected power consumption %d MW after first tick, got %d MW", expected, state.PowerConsumptionMW)
+	}
+}
+
+// TestGenesisStepByStepMinerStartsImmediately verifies that after applying the genesis
+// factory, the iron extractor starts producing ore on the very first tick (no build delay).
+func TestGenesisStepByStepMinerStartsImmediately(t *testing.T) {
+	state := newState()
+	applyGenesisInstant(t, state)
+
+	// Tick 1 second – miner should produce ore and route it to the smelter's input slot.
+	engine.Tick(state, time.Second)
+
+	smelter := state.Machines["smelter.iron_processor"]
+	if smelter == nil {
+		t.Fatal("smelter.iron_processor not found")
+	}
+	oreInSmelter := smelter.InputSlots["iron_ore"]
+	if oreInSmelter == nil || oreInSmelter.Count == 0 {
+		t.Error("expected iron_ore in smelter input after first tick (miner should produce immediately)")
+	}
+}
+
+// TestGenesisStepByStepSmelterStartsWhenOreArrives verifies that the smelter starts
+// producing ingots as soon as it has at least 1 ore. Because machines are processed in
+// pipeline order within the same tick (miner→smelter→builder), the ingot the smelter
+// produces in tick 2 is immediately consumed by the builder in the same tick.
+// The inventory should therefore contain a plate after tick 2.
+func TestGenesisStepByStepSmelterStartsWhenOreArrives(t *testing.T) {
+	state := newState()
+	applyGenesisInstant(t, state)
+
+	// Tick 1: miner produces ore and routes it to the smelter input.
+	// The smelter's production accumulator reaches 0.5 (30/min × 1s) – no cycle yet.
+	engine.Tick(state, time.Second)
+
+	smelter := state.Machines["smelter.iron_processor"]
+	if smelter == nil {
+		t.Fatal("smelter.iron_processor not found")
+	}
+	oreAfterTick1 := smelter.InputSlots["iron_ore"].Count
+	if oreAfterTick1 == 0 {
+		t.Fatal("smelter should have ore after tick 1")
+	}
+
+	// Tick 2: miner adds more ore; smelter accumulator reaches 1.0 → processes 1 cycle
+	// (consumes 1 ore, produces 1 ingot). Builder accumulator also reaches 1.0 →
+	// immediately processes that ingot and produces 1 plate (pipeline order).
+	engine.Tick(state, time.Second)
+
+	// Verify that the smelter consumed ore (its input count should be less than after tick 1 + new ore from miner)
+	// The miner added 2 more ore, so input would have been oreAfterTick1+2. After 1 smelter cycle: oreAfterTick1+2-1.
+	oreAfterTick2 := smelter.InputSlots["iron_ore"].Count
+	expectedOre := oreAfterTick1 + 2 - 1 // +2 from miner, -1 consumed by smelter
+	if oreAfterTick2 != expectedOre {
+		t.Errorf("smelter iron_ore: expected %d after tick 2 (1 consumed), got %d", expectedOre, oreAfterTick2)
+	}
+
+	// The builder consumed the ingot in the same tick → inventory should have a plate
+	plates := state.Inventory.Items[models.IronPlate]
+	if plates == 0 {
+		t.Error("expected iron_plate in inventory by tick 2 (smelter→builder pipeline runs in same tick)")
+	}
+}
+
+// TestGenesisStepByStepBuilderStartsWhenIngotsArrive verifies that the builder starts
+// producing plates as soon as it receives at least 1 ingot, and that inventory fills.
+func TestGenesisStepByStepBuilderStartsWhenIngotsArrive(t *testing.T) {
+	state := newState()
+	applyGenesisInstant(t, state)
+
+	// Tick several seconds to let the full pipeline run:
+	// tick 1: miner → smelter (ore arrives, smelter acc=0.5)
+	// tick 2: miner → smelter (acc=1.0 → 1 ingot → builder acc=0.5)
+	// tick 3: more ore; builder acc=1.0 → processes 1 plate → inventory
+	for i := 0; i < 4; i++ {
+		engine.Tick(state, time.Second)
+	}
+
+	plates := state.Inventory.Items[models.IronPlate]
+	if plates == 0 {
+		t.Error("expected iron_plate in inventory after 4 ticks – builder should start as soon as ingots arrive")
+	}
+}
+
+// TestGenesisStepByStepFullPipelineMultipleTicks verifies the full pipeline across
+// multiple 1-second ticks with two different setups (normal recipe and block recipe).
+// This test confirms the power consumption, machine state, and inventory are all correct.
+func TestGenesisStepByStepFullPipelineMultipleTicks(t *testing.T) {
+	// --- Setup 1: standard genesis (miner→smelter→plate builder→inventory) ---
+	t.Run("plate_pipeline", func(t *testing.T) {
+		state := newState()
+		applyGenesisInstant(t, state)
+
+		const tickCount = 10
+		for i := 1; i <= tickCount; i++ {
+			engine.Tick(state, time.Second)
+
+			// Power consumption must remain at 8 MW throughout (no trips).
+			expectedPower := models.MachinePowerUsageMW[models.MachineTypeMiner] +
+				models.MachinePowerUsageMW[models.MachineTypeSmelter] +
+				models.MachinePowerUsageMW[models.MachineTypeBuilder]
+			if state.PowerConsumptionMW != expectedPower {
+				t.Errorf("tick %d: expected power %d MW, got %d MW", i, expectedPower, state.PowerConsumptionMW)
+			}
+			if state.PowerTripped {
+				t.Errorf("tick %d: power grid should not be tripped", i)
+			}
+		}
+
+		// Miner must be GREEN after running
+		miner := state.Machines["miner.iron_extractor"]
+		if miner == nil {
+			t.Fatal("miner.iron_extractor not found")
+		}
+		if miner.Status != models.StatusGreen {
+			t.Errorf("miner status: expected GREEN, got %s", miner.Status)
+		}
+
+		// Smelter must be GREEN (has ore from miner, output not full)
+		smelter := state.Machines["smelter.iron_processor"]
+		if smelter == nil {
+			t.Fatal("smelter.iron_processor not found")
+		}
+		if smelter.Status != models.StatusGreen {
+			t.Errorf("smelter status: expected GREEN, got %s", smelter.Status)
+		}
+
+		// Inventory must contain iron_plate
+		plates := state.Inventory.Items[models.IronPlate]
+		if plates == 0 {
+			t.Error("expected iron_plate in inventory after 10 ticks")
+		}
+	})
+
+	// --- Setup 2: miner→smelter→block builder (4 ingots/block)→inventory ---
+	t.Run("block_pipeline", func(t *testing.T) {
+		const blockYAML = `
+resources:
+  miner:
+    iron_extractor:
+      node_id: "node_alpha"
+      outputs:
+        - target: "smelter.iron_processor.inputs.iron_ore"
+  smelter:
+    iron_processor:
+      recipe: "iron_ingot"
+      outputs:
+        - target: "builder.block_press.inputs.iron_ingot"
+  builder:
+    block_press:
+      recipe: "iron_block"
+      outputs:
+        - target: "inventory"
+`
+		state := newState()
+		result, err := parser.Parse("test", blockYAML)
+		if err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		if errs := parser.Validate(result, state); len(errs) > 0 {
+			t.Fatalf("validation errors: %v", errs)
+		}
+		parser.Apply(result, state)
+		for _, m := range result.Machines {
+			key := string(m.Type) + "." + m.ID
+			state.Machines[key] = m
+		}
+
+		// Tick 2 minutes to accumulate enough ingots for blocks (4 ingots per block).
+		engine.Tick(state, 2*time.Minute)
+
+		// Power must still be 8 MW
+		expectedPower := models.MachinePowerUsageMW[models.MachineTypeMiner] +
+			models.MachinePowerUsageMW[models.MachineTypeSmelter] +
+			models.MachinePowerUsageMW[models.MachineTypeBuilder]
+		if state.PowerConsumptionMW != expectedPower {
+			t.Errorf("expected power %d MW, got %d MW", expectedPower, state.PowerConsumptionMW)
+		}
+
+		// iron_block must be in inventory
+		blocks := state.Inventory.Items[models.IronBlock]
+		if blocks == 0 {
+			t.Error("expected iron_block in inventory after 2-minute tick with block recipe")
+		}
+	})
+}

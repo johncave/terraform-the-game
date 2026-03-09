@@ -301,10 +301,10 @@ func Validate(result *ParseResult, state *models.GameState) []string {
 	return errors
 }
 
-// Apply sets BuiltAt on machines (60 seconds from now) and deducts build costs from inventory.
+// Apply sets BuiltAt on machines (immediately) and deducts build costs from inventory.
 // For machines that already exist, it updates their recipe/routes in-place and carries over BuiltAt.
 func Apply(result *ParseResult, state *models.GameState) {
-	builtAt := time.Now().Add(60 * time.Second)
+	builtAt := time.Now()
 
 	for _, m := range result.Machines {
 		existingKey := string(m.Type) + "." + m.ID
