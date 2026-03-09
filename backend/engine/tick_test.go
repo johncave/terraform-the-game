@@ -215,8 +215,8 @@ func TestItemEffectsGeneric(t *testing.T) {
 	if !ok {
 		t.Fatal("SolarPanel not in ItemEffects")
 	}
-	if effect.PowerGenMW != models.SolarPanelGenMW {
-		t.Errorf("SolarPanel PowerGenMW: expected %d, got %d", models.SolarPanelGenMW, effect.PowerGenMW)
+	if effect.SolarPanels != 1 {
+		t.Errorf("SolarPanel SolarPanels: expected 1, got %d", effect.SolarPanels)
 	}
 
 	// Verify explorer effect

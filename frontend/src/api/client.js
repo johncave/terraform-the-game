@@ -41,5 +41,13 @@ export const api = {
   async listFactories(gameId) {
     const r = await fetch(`${BASE_URL}/games/${gameId}/factory`)
     return r.json()
+  },
+
+  async resetPowerGrid(gameId) {
+    const r = await fetch(`${BASE_URL}/games/${gameId}/power/reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    })
+    return r.json()
   }
 }

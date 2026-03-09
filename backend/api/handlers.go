@@ -354,7 +354,7 @@ func (h *Handlers) ApplyFactory(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	// Check if factory already exists
+	// Check if factory already exists (ignore error — proceed with current timestamp if not found)
 	existingFactory, _ := h.db.GetFactory(gameID, factoryID)
 	if existingFactory != nil {
 		factory.CreatedAt = existingFactory.CreatedAt

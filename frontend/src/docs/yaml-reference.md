@@ -20,6 +20,7 @@ resources:
 
 | Field | Required | Description |
 |-------|----------|-------------|
+| `count` | No | Number of identical machines to create (default 1); names become `<name>_1`, `<name>_2`, etc. |
 | `outputs` | No | List of route targets for produced items |
 
 ### Miner only

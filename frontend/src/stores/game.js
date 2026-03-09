@@ -68,7 +68,21 @@ export const useGameStore = defineStore('game', () => {
         result.errors.forEach((e) => log(`  ✗ ${e}`, 'error'))
       }
       if (result.valid) {
-        log('Plan: 1 to add, 0 to change, 0 to destroy.', 'success')
+        const add = (result.to_add || []).length
+        const change = (result.to_change || []).length
+        const destroy = (result.to_destroy || []).length
+        log(`Plan: ${add} to add, ${change} to change, ${destroy} to destroy.`, 'success')
+        if (add > 0) {
+          result.to_add.forEach((k) => log(`  + ${k}`, 'success'))
+        }
+        if (change > 0) {
+          result.to_change.forEach((k) => log(`  ~ ${k}`, 'warn'))
+        }
+        if (destroy > 0) {
+          result.to_destroy.forEach((k) => log(`  - ${k}`, 'error'))
+        }
+      } else {
+        log('Plan failed — fix the errors above before applying.', 'error')
       }
       return result
     } catch (e) {
@@ -81,15 +95,36 @@ export const useGameStore = defineStore('game', () => {
     log(`\n$ terraform apply (factory: ${factoryId})`, 'command')
     try {
       const result = await api.applyFactory(gameId.value, factoryId, yaml)
-      log(result.message || 'Apply complete.', result.success ? 'success' : 'error')
+      if (result.errors && result.errors.length > 0) {
+        result.errors.forEach((e) => log(`  ✗ ${e}`, 'error'))
+        return { success: false, message: result.error || 'Apply failed' }
+      }
       if (result.success) {
-        log('Apply complete! Resources: 1 added.', 'success')
+        const add = (result.to_add || []).length
+        const change = (result.to_change || []).length
+        const destroy = (result.to_destroy || []).length
+        log(`Apply complete: ${add} added, ${change} changed, ${destroy} destroyed.`, 'success')
+        if (result.to_add?.length) result.to_add.forEach((k) => log(`  + ${k}`, 'success'))
+        if (result.to_change?.length) result.to_change.forEach((k) => log(`  ~ ${k}`, 'warn'))
+        if (result.to_destroy?.length) result.to_destroy.forEach((k) => log(`  - ${k}`, 'error'))
         await refreshState()
+      } else {
+        log(result.message || result.error || 'Apply failed.', 'error')
       }
       return result
     } catch (e) {
       log(`Error: ${e.message}`, 'error')
       return { success: false }
+    }
+  }
+
+  async function resetPowerGrid() {
+    try {
+      await api.resetPowerGrid(gameId.value)
+      log('⚡ Power grid reset — machines resuming.', 'success')
+      await refreshState()
+    } catch (e) {
+      log(`Error resetting power: ${e.message}`, 'error')
     }
   }
 
@@ -131,6 +166,7 @@ export const useGameStore = defineStore('game', () => {
     machines,
     inventory,
     discoveredNodes,
-    nodeTypes
+    nodeTypes,
+    resetPowerGrid
   }
 })

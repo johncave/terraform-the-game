@@ -200,14 +200,14 @@ const ProcessingRate = 30
 
 // ItemEffect describes the side effects of producing an item (beyond routing it to inventory).
 type ItemEffect struct {
-	PowerGenMW int // permanent MW added to power generation when this item is produced
-	Explorers  int // explorer count increment when this item is produced
+	SolarPanels int // number of solar panels this item counts as (each generates SolarPanelGenMW)
+	Explorers   int // explorer count increment when this item is produced
 }
 
 // ItemEffects maps output item types to their side effects.
 // This makes adding new "special" item types generic — just add an entry here.
 var ItemEffects = map[ItemType]ItemEffect{
-	SolarPanel: {PowerGenMW: SolarPanelGenMW},
+	SolarPanel: {SolarPanels: 1},
 	Explorer:   {Explorers: 1},
 }
 

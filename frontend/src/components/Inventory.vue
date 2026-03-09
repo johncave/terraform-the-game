@@ -55,7 +55,56 @@
         </div>
       </section>
 
-      <!-- Discovered Nodes -->
+      <!-- Power Grid -->
+      <section class="section">
+        <div class="section-header">
+          <span>POWER GRID</span>
+          <span
+            v-if="store.gameState?.power_tripped"
+            class="trip-badge"
+          >⚠ TRIPPED</span>
+        </div>
+        <div class="power-stats">
+          <div class="power-row">
+            <span class="power-label">Available</span>
+            <span class="power-val power-green">⚡ {{ powerAvailableMW }} MW</span>
+          </div>
+          <div class="power-row">
+            <span class="power-label">Consumption</span>
+            <span
+              class="power-val"
+              :class="powerOverload ? 'power-red' : 'power-yellow'"
+            >
+              ⚡ {{ powerConsumptionMW }} MW
+            </span>
+          </div>
+          <div class="power-progress-track">
+            <div
+              class="power-progress-fill"
+              :class="powerOverload ? 'bar-red' : 'bar-green'"
+              :style="{ width: powerUsagePct + '%' }"
+            ></div>
+          </div>
+          <div class="power-row power-breakdown">
+            <span class="power-label">Base</span>
+            <span class="power-val">10 MW</span>
+          </div>
+          <div v-if="store.gameState?.power_generation > 0" class="power-row power-breakdown">
+            <span class="power-label">Solar panels</span>
+            <span class="power-val power-green">+{{ store.gameState.power_generation * 5 }} MW ({{ store.gameState.power_generation }}×)</span>
+          </div>
+        </div>
+        <button
+          v-if="store.gameState?.power_tripped"
+          class="btn btn-danger btn-sm reset-btn"
+          @click="handlePowerReset"
+          :disabled="resetting"
+        >
+          <span v-if="resetting" class="spinner">◌</span>
+          <span v-else>⚡</span>
+          Reset Power Grid
+        </button>
+      </section>
       <section class="section">
         <div class="section-header">
           <span>DISCOVERED NODES</span>
@@ -86,12 +135,15 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useGameStore } from '../stores/game.js'
 
 const store = useGameStore()
+const resetting = ref(false)
 
 const MAX_CAPACITY = 1000
+const BASE_POWER_MW = 10
+const SOLAR_GEN_MW = 5
 
 const hasItems = computed(() => Object.values(store.inventory).some((v) => v > 0))
 
@@ -110,6 +162,22 @@ const zeroItems = computed(() => {
 })
 
 const itemCount = computed(() => Object.keys(store.inventory).length)
+
+const powerAvailableMW = computed(() => {
+  const solar = store.gameState?.power_generation || 0
+  return BASE_POWER_MW + solar * SOLAR_GEN_MW
+})
+
+const powerConsumptionMW = computed(() => {
+  return store.gameState?.power_consumption_mw || 0
+})
+
+const powerOverload = computed(() => powerConsumptionMW.value > powerAvailableMW.value)
+
+const powerUsagePct = computed(() => {
+  if (powerAvailableMW.value === 0) return 100
+  return Math.min(Math.round((powerConsumptionMW.value / powerAvailableMW.value) * 100), 100)
+})
 
 function formatItemName(key) {
   return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
@@ -143,6 +211,15 @@ function formatTick(tick) {
     return new Date(tick).toLocaleTimeString()
   } catch {
     return tick
+  }
+}
+
+async function handlePowerReset() {
+  resetting.value = true
+  try {
+    await store.resetPowerGrid()
+  } finally {
+    resetting.value = false
   }
 }
 </script>
@@ -327,6 +404,85 @@ function formatTick(tick) {
 }
 
 .empty-icon { opacity: 0.4; }
+
+/* Power grid */
+.power-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.power-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+}
+
+.power-breakdown {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.power-label {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: 0.05em;
+}
+
+.power-val { font-variant-numeric: tabular-nums; }
+.power-green { color: var(--color-green); }
+.power-yellow { color: var(--color-yellow); }
+.power-red { color: var(--color-red); font-weight: 600; }
+
+.power-progress-track {
+  height: 5px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 2px 0;
+}
+
+.power-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+.trip-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--color-red);
+  background: rgba(248, 81, 73, 0.1);
+  border: 1px solid rgba(248, 81, 73, 0.3);
+  border-radius: 3px;
+  padding: 1px 5px;
+  animation: pulse-text 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-text {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.reset-btn {
+  margin-top: 6px;
+  width: 100%;
+  justify-content: center;
+  font-size: 11px;
+  padding: 5px 10px;
+}
+
+.btn-sm { padding: 4px 10px; font-size: 11px; }
+
+.spinner {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* Last tick */
 .last-tick {

@@ -207,9 +207,9 @@ func processOnce(state *models.GameState, machine *models.Machine, recipe models
 		// Route immediately
 		routeItems(state, machine, itemType, amount)
 
-		// Apply generic item effects (power generation, explorer count, etc.)
+		// Apply generic item effects (solar panel count, explorer count, etc.)
 		if effect, hasEffect := models.ItemEffects[itemType]; hasEffect {
-			state.PowerGeneration += effect.PowerGenMW * amount
+			state.PowerGeneration += effect.SolarPanels * amount
 			state.Explorers += effect.Explorers * amount
 		}
 	}

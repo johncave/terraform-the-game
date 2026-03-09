@@ -147,10 +147,17 @@ async function handleApply() {
   planStatus.value = null
   try {
     const yaml = getEditorValue()
+    // Apply always runs plan (validation) first internally (server-side too),
+    // but surface the plan diff in the terminal before the apply completes.
+    const planResult = await store.plan(factoryId.value, yaml)
+    if (!planResult.valid) {
+      planStatus.value = { class: 'status-err', icon: '✗', message: 'Plan failed — fix errors before applying' }
+      return
+    }
     const result = await store.apply(factoryId.value, yaml)
     planStatus.value = result.success
       ? { class: 'status-ok', icon: '✓', message: 'Apply complete! Factory updated.' }
-      : { class: 'status-err', icon: '✗', message: result.message || 'Apply failed' }
+      : { class: 'status-err', icon: '✗', message: result.message || result.error || 'Apply failed' }
     if (result.success) lastPlanValid.value = null
   } finally {
     applyLoading.value = false

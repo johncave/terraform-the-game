@@ -1,14 +1,17 @@
 <template>
-  <div class="machine-node" :class="statusClass">
+  <div class="machine-node" :class="statusClass" @click="$emit('node-click', data)">
     <!-- Status dot -->
     <div class="node-status">
       <span class="status-dot" :class="data.status || 'IDLE'"></span>
       <span class="node-id">{{ data.label || data.id }}</span>
     </div>
 
-    <!-- Type badge -->
+    <!-- Type badge + power usage -->
     <div class="node-meta">
       <span class="badge" :class="typeBadgeClass">{{ data.type }}</span>
+      <span v-if="data.power_usage_mw > 0" class="power-badge" title="Power consumption">
+        ⚡ {{ data.power_usage_mw }} MW
+      </span>
     </div>
 
     <!-- Slots -->
@@ -39,6 +42,8 @@ const props = defineProps({
     default: () => ({})
   }
 })
+
+defineEmits(['node-click'])
 
 const statusClass = computed(() => {
   const s = props.data.status || 'IDLE'
@@ -74,12 +79,13 @@ const hasSlots = computed(() => {
   max-width: 180px;
   font-family: var(--font-mono);
   font-size: 11px;
-  cursor: default;
+  cursor: pointer;
   transition: box-shadow 0.2s;
 }
 
 .machine-node:hover {
-  box-shadow: 0 0 12px rgba(88, 166, 255, 0.15);
+  box-shadow: 0 0 12px rgba(88, 166, 255, 0.25);
+  border-color: rgba(88, 166, 255, 0.4);
 }
 
 /* Status border colors */
@@ -108,6 +114,16 @@ const hasSlots = computed(() => {
 /* Meta row */
 .node-meta {
   margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.power-badge {
+  font-size: 9px;
+  color: var(--color-yellow);
+  opacity: 0.8;
 }
 
 /* Slots */
