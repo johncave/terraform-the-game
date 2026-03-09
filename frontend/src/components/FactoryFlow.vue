@@ -160,9 +160,10 @@ const COL_WIDTH = 220
 const ROW_HEIGHT = 120
 
 // Recipe rates (items per minute) used to display throughput in the detail drawer.
+// Miners run at 120/min; all smelter/builder/assembler processors run at 30/min.
 const RECIPE_RATES = {
   miner: 120,    // miners always produce at 120/min
-  default: 30    // all processors run at 30/min
+  default: 30    // smelters, builders, and assemblers run at 30/min
 }
 
 function getColumn(type) {
