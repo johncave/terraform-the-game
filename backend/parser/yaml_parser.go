@@ -16,11 +16,14 @@ type FactoryConfig struct {
 
 // MachineConfig represents a single machine definition in YAML
 type MachineConfig struct {
-	NodeID  string            `yaml:"node_id"`
-	Recipe  string            `yaml:"recipe"`
-	Count   int               `yaml:"count"` // number of identical machines to create (default 1)
-	Outputs []OutputConfig    `yaml:"outputs"`
-	Inputs  map[string]string `yaml:"inputs"`
+	NodeID  string         `yaml:"node_id"`
+	Recipe  string         `yaml:"recipe"`
+	Count   int            `yaml:"count"`   // number of identical machines to create (default 1)
+	Outputs []OutputConfig `yaml:"outputs"`
+	// Inputs override the recipe's default input quantities for this machine.
+	// Key: item type (e.g. "iron_ingot"), Value: quantity consumed per craft cycle.
+	// If omitted, the recipe's default quantities are used.
+	Inputs map[string]int `yaml:"inputs"`
 }
 
 type OutputConfig struct {
@@ -89,6 +92,19 @@ func Parse(factoryID string, yamlStr string) (*ParseResult, error) {
 					PowerUsageMW: models.MachinePowerUsageMW[machineType],
 				}
 
+				// Apply YAML input overrides: if the user specified `inputs:` quantities,
+				// store them in RecipeInputs so processOnce uses them instead of recipe defaults.
+				if len(machineConf.Inputs) > 0 {
+					machine.RecipeInputs = make(map[models.ItemType]int, len(machineConf.Inputs))
+					for itemKey, qty := range machineConf.Inputs {
+						if qty <= 0 {
+							result.Errors = append(result.Errors, fmt.Sprintf("machine %s: input %s must be > 0", key, itemKey))
+							continue
+						}
+						machine.RecipeInputs[models.ItemType(itemKey)] = qty
+					}
+				}
+
 				// Validate recipe for non-miners
 				if machineType != models.MachineTypeMiner {
 					if machineConf.Recipe == "" {
@@ -103,23 +119,38 @@ func Parse(factoryID string, yamlStr string) (*ParseResult, error) {
 					result.Errors = append(result.Errors, fmt.Sprintf("miner %s missing node_id", key))
 				}
 
-				// Set up output slots based on recipe
+				// Determine effective inputs (overrides take precedence over recipe defaults).
+				// Used to set up input slots with the right item types.
+				effectiveInputs := map[models.ItemType]int{}
+				if recipe, ok := models.Recipes[machineConf.Recipe]; ok {
+					for item, qty := range recipe.Inputs {
+						effectiveInputs[item] = qty
+					}
+				}
+				// Apply per-machine overrides
+				for item, qty := range machine.RecipeInputs {
+					effectiveInputs[item] = qty
+				}
+
+				// Set up input/output slots based on effective recipe
 				if machineType == models.MachineTypeMiner {
 					machine.OutputSlots["iron_ore"] = &models.Slot{
 						ItemType: models.IronOre,
 						Capacity: models.StackHeight,
 					}
-				} else if recipe, ok := models.Recipes[machineConf.Recipe]; ok {
-					for itemType := range recipe.Inputs {
+				} else {
+					for itemType := range effectiveInputs {
 						machine.InputSlots[string(itemType)] = &models.Slot{
 							ItemType: itemType,
 							Capacity: models.StackHeight,
 						}
 					}
-					for itemType := range recipe.Outputs {
-						machine.OutputSlots[string(itemType)] = &models.Slot{
-							ItemType: itemType,
-							Capacity: models.StackHeight,
+					if recipe, ok := models.Recipes[machineConf.Recipe]; ok {
+						for itemType := range recipe.Outputs {
+							machine.OutputSlots[string(itemType)] = &models.Slot{
+								ItemType: itemType,
+								Capacity: models.StackHeight,
+							}
 						}
 					}
 				}
@@ -165,9 +196,10 @@ func Diff(factoryID string, result *ParseResult, state *models.GameState) PlanDi
 		if !alreadyBuilt {
 			diff.ToAdd = append(diff.ToAdd, key)
 		} else {
-			// Check if anything changed (recipe, routes, node_id)
+			// Check if anything changed (recipe, routes, node_id, input overrides)
 			if existing.Recipe != m.Recipe || existing.NodeID != m.NodeID ||
-				!routesEqual(existing.Routes, m.Routes) {
+				!routesEqual(existing.Routes, m.Routes) ||
+				!recipeInputsEqual(existing.RecipeInputs, m.RecipeInputs) {
 				diff.ToChange = append(diff.ToChange, key)
 			}
 		}
@@ -182,6 +214,18 @@ func routesEqual(a, b []models.Route) bool {
 	}
 	for i := range a {
 		if a[i].Target != b[i].Target {
+			return false
+		}
+	}
+	return true
+}
+
+func recipeInputsEqual(a, b map[models.ItemType]int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, va := range a {
+		if vb, ok := b[k]; !ok || va != vb {
 			return false
 		}
 	}
@@ -266,11 +310,12 @@ func Apply(result *ParseResult, state *models.GameState) {
 		existingKey := string(m.Type) + "." + m.ID
 		existing, alreadyBuilt := state.Machines[existingKey]
 		if alreadyBuilt {
-			// Update recipe/routes/node_id in place but preserve BuiltAt and accumulators.
+			// Update recipe/routes/node_id/input overrides in place, preserve BuiltAt and accumulators.
 			existing.Recipe = m.Recipe
 			existing.NodeID = m.NodeID
 			existing.Routes = m.Routes
-			// Rebuild slots if recipe changed (reset counts to 0 for new recipe).
+			existing.RecipeInputs = m.RecipeInputs
+			// Rebuild slots if recipe or input overrides changed (reset counts to 0 for new recipe).
 			existing.InputSlots = m.InputSlots
 			existing.OutputSlots = m.OutputSlots
 			// Carry BuiltAt and accumulator back to m so the caller can safely use m.

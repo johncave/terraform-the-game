@@ -166,7 +166,7 @@ const flowNodes = computed(() => {
       type: 'machine',
       position: { x: col * COL_WIDTH + 20, y: row * ROW_HEIGHT + 20 },
       data: {
-        _key: key,
+        machineKey: key,
         id: machine.id,
         label: machine.id,
         type: machine.type || 'unknown',
@@ -259,7 +259,7 @@ watch(
     setTimeout(() => fitView({ padding: 0.1 }), 100)
     // Keep selected machine data up-to-date
     if (selectedMachine.value) {
-      const key = selectedMachine.value._key
+      const key = selectedMachine.value.machineKey
       const updated = store.machines[key]
       if (updated) {
         selectedMachine.value = {

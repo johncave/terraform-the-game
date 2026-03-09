@@ -21,6 +21,7 @@ const (
 	IronOre    ItemType = "iron_ore"
 	IronIngot  ItemType = "iron_ingot"
 	IronPlate  ItemType = "iron_plate"
+	IronSheet  ItemType = "iron_sheet"
 	IronBlock  ItemType = "iron_block"
 	IronWheel  ItemType = "iron_wheel"
 	SolarPanel ItemType = "solar_panel"
@@ -61,18 +62,21 @@ type Route struct {
 }
 
 type Machine struct {
-	ID              string           `json:"id"`
-	Type            MachineType      `json:"type"`
-	Recipe          string           `json:"recipe,omitempty"`
-	NodeID          string           `json:"node_id,omitempty"`
-	InputSlots      map[string]*Slot `json:"input_slots"`
-	OutputSlots     map[string]*Slot `json:"output_slots"`
-	Status          MachineStatus    `json:"status"`
-	Routes          []Route          `json:"routes"`
-	FactoryID       string           `json:"factory_id"`
-	PowerUsageMW    int              `json:"power_usage_mw"`   // MW draw of this machine
-	BuiltAt         *time.Time       `json:"built_at,omitempty"`
-	ProdAccumulator float64          `json:"prod_accumulator"` // fractional production remainder carried across ticks
+	ID              string            `json:"id"`
+	Type            MachineType       `json:"type"`
+	Recipe          string            `json:"recipe,omitempty"`
+	NodeID          string            `json:"node_id,omitempty"`
+	// RecipeInputs holds per-machine input overrides defined via the YAML `inputs:` field.
+	// When non-empty, these quantities are used instead of the recipe's default Inputs.
+	RecipeInputs    map[ItemType]int  `json:"recipe_inputs,omitempty"`
+	InputSlots      map[string]*Slot  `json:"input_slots"`
+	OutputSlots     map[string]*Slot  `json:"output_slots"`
+	Status          MachineStatus     `json:"status"`
+	Routes          []Route           `json:"routes"`
+	FactoryID       string            `json:"factory_id"`
+	PowerUsageMW    int               `json:"power_usage_mw"`   // MW draw of this machine
+	BuiltAt         *time.Time        `json:"built_at,omitempty"`
+	ProdAccumulator float64           `json:"prod_accumulator"` // fractional production remainder carried across ticks
 }
 
 type PlanetInventory struct {
@@ -163,8 +167,15 @@ var Recipes = map[string]Recipe{
 		Outputs: map[ItemType]int{IronPlate: 1},
 		Rate:    30,
 	},
-	"iron_block": {
+	// iron_sheet: thin pressed sheet — 1 ingot produces 1 sheet (low density)
+	"iron_sheet": {
 		Inputs:  map[ItemType]int{IronIngot: 1},
+		Outputs: map[ItemType]int{IronSheet: 1},
+		Rate:    30,
+	},
+	// iron_block: solid block — requires 4 ingots (high density)
+	"iron_block": {
+		Inputs:  map[ItemType]int{IronIngot: 4},
 		Outputs: map[ItemType]int{IronBlock: 1},
 		Rate:    30,
 	},

@@ -168,9 +168,20 @@ func tickProcessor(state *models.GameState, machine *models.Machine, elapsedSecs
 	return changed
 }
 
+// getEffectiveInputs returns the input requirements for a machine, using per-machine
+// RecipeInputs overrides when present and falling back to the recipe's defaults.
+func getEffectiveInputs(machine *models.Machine, recipe models.Recipe) map[models.ItemType]int {
+	if len(machine.RecipeInputs) > 0 {
+		return machine.RecipeInputs
+	}
+	return recipe.Inputs
+}
+
 func processOnce(state *models.GameState, machine *models.Machine, recipe models.Recipe) bool {
+	effectiveInputs := getEffectiveInputs(machine, recipe)
+
 	// Check all input slots have required items
-	for itemType, required := range recipe.Inputs {
+	for itemType, required := range effectiveInputs {
 		slot, exists := machine.InputSlots[string(itemType)]
 		if !exists || slot.Count < required {
 			machine.Status = models.StatusRed
@@ -194,8 +205,8 @@ func processOnce(state *models.GameState, machine *models.Machine, recipe models
 		}
 	}
 
-	// Consume inputs
-	for itemType, required := range recipe.Inputs {
+	// Consume inputs (using effective inputs, which may be overridden)
+	for itemType, required := range effectiveInputs {
 		machine.InputSlots[string(itemType)].Count -= required
 	}
 
@@ -309,8 +320,8 @@ func updateProcessorStatus(machine *models.Machine, recipe models.Recipe) {
 		}
 	}
 
-	// Check if any input is empty
-	for itemType, required := range recipe.Inputs {
+	// Check if any input is starved (using effective inputs: override or recipe default)
+	for itemType, required := range getEffectiveInputs(machine, recipe) {
 		slot, exists := machine.InputSlots[string(itemType)]
 		if !exists || slot.Count < required {
 			machine.Status = models.StatusRed

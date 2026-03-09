@@ -3,6 +3,8 @@
 Recipes define what a processing machine (smelter, builder, assembler) produces.
 Specify the recipe name via the `recipe` field in your YAML.
 
+> **Tip:** You can override input quantities per-machine using the `inputs:` field — see the YAML Reference for details.
+
 ## Reference
 
 ### iron_ingot
@@ -15,6 +17,20 @@ Smelt raw iron ore into ingots.
 | **Output** | iron_ingot | 1 |
 
 - Compatible machines: **smelter**
+- Rate: 30 / min
+
+---
+
+### iron_sheet
+
+Press an ingot into a thin flat sheet. Lower density than a plate.
+
+| | Item | Qty |
+|---|---|---|
+| **Input** | iron_ingot | 1 |
+| **Output** | iron_sheet | 1 |
+
+- Compatible machines: **builder**
 - Rate: 30 / min
 
 ---
@@ -35,15 +51,16 @@ Press ingots into flat plates. The most fundamental construction material.
 
 ### iron_block
 
-Cast ingots into solid blocks.
+Cast ingots into solid structural blocks. Requires **4 ingots** per block.
 
 | | Item | Qty |
 |---|---|---|
-| **Input** | iron_ingot | 1 |
+| **Input** | iron_ingot | **4** |
 | **Output** | iron_block | 1 |
 
 - Compatible machines: **builder**
 - Rate: 30 / min
+- Use `inputs: { iron_ingot: 2 }` to halve the cost per machine if needed
 
 ---
 
@@ -73,7 +90,7 @@ Assemble a solar panel for power generation.
 
 - Compatible machines: **assembler**
 - Rate: 30 / min
-- Effect: +1 MW power generation per panel built
+- Effect: +5 MW power generation per panel built
 
 ---
 
@@ -90,6 +107,7 @@ Build an autonomous explorer rover.
 - Compatible machines: **assembler**
 - Rate: 30 / min
 - Effect: Explorers discover new resource nodes over time
+- Power: each deployed explorer consumes 2 MW
 
 ---
 
@@ -97,15 +115,15 @@ Build an autonomous explorer rover.
 
 ```
 iron_ore  ──[smelter]──▶  iron_ingot
-                              │
-              ┌───────────────┤
-              │               │
-          [builder]       [builder]
-          iron_plate       iron_block
-              │               │
-              │        ┌──────┴──────┐
-              │    [builder]     [assembler]
-              │   iron_wheel    solar_panel
-              │        │
-              └─── [assembler] ──▶ explorer
+                               │
+               ┌───────────────┼───────────────┐
+               │               │               │
+           [builder]       [builder]       [builder]
+           iron_sheet      iron_plate      iron_block (×4)
+                               │               │
+                               │        ┌──────┴──────┐
+                               │    [builder]     [assembler]
+                               │   iron_wheel    solar_panel
+                               │        │
+                               └─── [assembler] ──▶ explorer
 ```

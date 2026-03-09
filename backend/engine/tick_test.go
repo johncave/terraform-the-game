@@ -252,6 +252,129 @@ func TestMachinesNotYetBuiltDontTick(t *testing.T) {
 	}
 }
 
+// TestIronBlockCosts4IngotsPerCycle verifies the engine processes iron_block at 4 ingots/block.
+func TestIronBlockCosts4IngotsPerCycle(t *testing.T) {
+	state := newState()
+	past := time.Now().Add(-5 * time.Minute)
+
+	// Put a builder with iron_block recipe and 12 ingots in input
+	state.Machines["builder.block_press"] = &models.Machine{
+		ID:           "block_press",
+		Type:         models.MachineTypeBuilder,
+		Recipe:       "iron_block",
+		PowerUsageMW: models.MachinePowerUsageMW[models.MachineTypeBuilder],
+		BuiltAt:      &past,
+		InputSlots: map[string]*models.Slot{
+			"iron_ingot": {ItemType: models.IronIngot, Count: 12, Capacity: 100},
+		},
+		OutputSlots: map[string]*models.Slot{
+			"iron_block": {ItemType: models.IronBlock, Count: 0, Capacity: 100},
+		},
+		Routes: []models.Route{{Target: "inventory"}},
+	}
+
+	engine.Tick(state, time.Minute)
+
+	blocks := state.Inventory.Items[models.IronBlock]
+	// 12 ingots / 4 per block = 3 blocks max in 1 minute (rate 30/min → 30 cycles, but only 3 can complete)
+	if blocks == 0 {
+		t.Error("expected iron_blocks to be produced")
+	}
+	if blocks > 3 {
+		t.Errorf("expected at most 3 iron_blocks from 12 ingots at 4/block, got %d", blocks)
+	}
+	// Verify ingots were consumed correctly: 3 blocks × 4 = 12 ingots consumed
+	remaining := state.Machines["builder.block_press"].InputSlots["iron_ingot"].Count
+	if remaining != 12-blocks*4 {
+		t.Errorf("expected %d ingots remaining, got %d", 12-blocks*4, remaining)
+	}
+}
+
+// TestInputOverrideIsUsedInProcessing verifies that a machine with RecipeInputs consumes
+// the overridden quantity per cycle instead of the recipe default.
+func TestInputOverrideIsUsedInProcessing(t *testing.T) {
+	// iron_block default costs 4 ingots; override to 2
+	const yaml = `
+resources:
+  miner:
+    ore_miner:
+      node_id: "node_alpha"
+      outputs:
+        - target: "smelter.smelter1.inputs.iron_ore"
+  smelter:
+    smelter1:
+      recipe: "iron_ingot"
+      outputs:
+        - target: "builder.block_press.inputs.iron_ingot"
+  builder:
+    block_press:
+      recipe: "iron_block"
+      inputs:
+        iron_ingot: 2
+      outputs:
+        - target: "inventory"
+`
+	state := newState()
+	result, err := parser.Parse("test", yaml)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	if errs := parser.Validate(result, state); len(errs) > 0 {
+		t.Fatalf("validate: %v", errs)
+	}
+	parser.Apply(result, state)
+	past := time.Now().Add(-5 * time.Minute)
+	for _, m := range result.Machines {
+		key := string(m.Type) + "." + m.ID
+		m.BuiltAt = &past
+		state.Machines[key] = m
+	}
+
+	// Tick 2 minutes — expect iron_blocks produced
+	engine.Tick(state, 2*time.Minute)
+
+	blocks := state.Inventory.Items[models.IronBlock]
+	if blocks == 0 {
+		t.Error("expected iron_blocks in inventory with 2-ingot override")
+	}
+	// With override=2 and ~60 ingots produced in 2min, expect at least 15 blocks.
+	if blocks < 15 {
+		t.Errorf("expected >= 15 iron_blocks with 2-ingot override, got %d", blocks)
+	}
+}
+
+// TestDefaultRecipeCostIsUsedWhenNoOverride verifies that without overrides, the
+// iron_block recipe costs 4 ingots per cycle.
+func TestDefaultRecipeCostIsUsedWhenNoOverride(t *testing.T) {
+	state := newState()
+	past := time.Now().Add(-5 * time.Minute)
+	state.Machines["builder.block_press"] = &models.Machine{
+		ID:           "block_press",
+		Type:         models.MachineTypeBuilder,
+		Recipe:       "iron_block",
+		PowerUsageMW: models.MachinePowerUsageMW[models.MachineTypeBuilder],
+		BuiltAt:      &past,
+		InputSlots: map[string]*models.Slot{
+			"iron_ingot": {ItemType: models.IronIngot, Count: 8, Capacity: 100},
+		},
+		OutputSlots: map[string]*models.Slot{
+			"iron_block": {ItemType: models.IronBlock, Count: 0, Capacity: 100},
+		},
+		Routes: []models.Route{{Target: "inventory"}},
+	}
+
+	engine.Tick(state, time.Minute)
+
+	blocks := state.Inventory.Items[models.IronBlock]
+	// 8 ingots / 4 per block = 2 blocks (rate=30/min but only 2 cycles can complete)
+	if blocks == 0 {
+		t.Error("expected iron_blocks produced from 8 ingots at 4 per block")
+	}
+	if blocks > 2 {
+		t.Errorf("expected at most 2 iron_blocks from 8 ingots at 4/block, got %d", blocks)
+	}
+}
+
 // TestExplorerConsumptionContributesToPowerDemand verifies that explorers add to power demand.
 func TestExplorerConsumptionContributesToPowerDemand(t *testing.T) {
 	state := newState()

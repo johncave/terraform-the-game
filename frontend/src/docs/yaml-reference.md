@@ -22,6 +22,7 @@ resources:
 |-------|----------|-------------|
 | `count` | No | Number of identical machines to create (default 1); names become `<name>_1`, `<name>_2`, etc. |
 | `outputs` | No | List of route targets for produced items |
+| `inputs` | No | Override recipe input quantities for this machine (see Recipe Cost Overrides) |
 
 ### Miner only
 
@@ -54,6 +55,37 @@ outputs:
 - target: "inventory"
 ```
 
+## Recipe Cost Overrides
+
+The `inputs:` field lets you override how many of each resource a machine consumes per craft cycle. Without it, the recipe's default quantities apply.
+
+```yaml
+builder:
+  block_press:
+    recipe: "iron_block"
+    inputs:
+      iron_ingot: 2    # uses 2 ingots instead of the default 4
+    outputs:
+      - target: "inventory"
+```
+
+- All keys must be positive integers (≥ 1).
+- The override applies **only** to that specific machine instance.
+- Other machines using the same recipe are unaffected.
+- Changing an override after apply shows up as `~` (change) in `terraform plan`.
+
+## Recipes
+
+| Recipe | Machine | Default Inputs | Output |
+|--------|---------|----------------|--------|
+| `iron_ingot` | smelter | 1 × iron_ore | 1 × iron_ingot |
+| `iron_sheet` | builder | 1 × iron_ingot | 1 × iron_sheet |
+| `iron_plate` | builder | 1 × iron_ingot | 1 × iron_plate |
+| `iron_block` | builder | **4 × iron_ingot** | 1 × iron_block |
+| `iron_wheel` | builder | 1 × iron_block | 1 × iron_wheel |
+| `solar_panel` | assembler | 1 × iron_plate + 1 × iron_block | 1 × solar_panel |
+| `explorer` | assembler | 1 × iron_block + 1 × iron_wheel | 1 × explorer |
+
 ## Full Example
 
 ```yaml
@@ -85,6 +117,9 @@ resources:
         - target: "inventory"
     block_caster:
       recipe: "iron_block"
+      # Override: 2 ingots per block instead of the default 4
+      inputs:
+        iron_ingot: 2
       outputs:
         - target: "inventory"
 ```
@@ -92,10 +127,10 @@ resources:
 ## Plan vs Apply
 
 - **Plan**: validates the YAML, checks recipes, routes, node IDs and build costs. Does **not** change game state.
-- **Apply**: validates and then deducts build costs, registers machines. Machines become active after a **60-second** warm-up.
+- **Apply**: runs plan first, then deducts build costs, registers machines. Machines removed from the YAML are destroyed. Machines become active after a **60-second** warm-up.
 
 ## Multiple Factories
 
-You can have multiple factories with different names. Applying the same factory name again is an **update** — existing machines are kept, new machines are built and charged.
+You can have multiple factories with different names. Applying the same factory name again is an **update** — existing machines are kept, new machines are built, removed machines are destroyed.
 
 Use the factory tabs in the top bar to switch between factory views.

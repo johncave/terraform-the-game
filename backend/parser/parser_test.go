@@ -410,6 +410,131 @@ resources:
 	}
 }
 
+// TestIronBlockRecipeCosts4Ingots verifies that the iron_block recipe now requires 4 ingots.
+func TestIronBlockRecipeCosts4Ingots(t *testing.T) {
+	recipe, ok := models.Recipes["iron_block"]
+	if !ok {
+		t.Fatal("iron_block recipe not found")
+	}
+	got := recipe.Inputs[models.IronIngot]
+	if got != 4 {
+		t.Errorf("iron_block should cost 4 iron_ingot, got %d", got)
+	}
+}
+
+// TestIronSheetRecipeCosts1Ingot verifies the new iron_sheet recipe.
+func TestIronSheetRecipeCosts1Ingot(t *testing.T) {
+	recipe, ok := models.Recipes["iron_sheet"]
+	if !ok {
+		t.Fatal("iron_sheet recipe not found")
+	}
+	if got := recipe.Inputs[models.IronIngot]; got != 1 {
+		t.Errorf("iron_sheet should cost 1 iron_ingot, got %d", got)
+	}
+	if _, ok := recipe.Outputs[models.IronSheet]; !ok {
+		t.Error("iron_sheet recipe should output iron_sheet")
+	}
+}
+
+// TestInputOverrideInYAML verifies that `inputs:` in the YAML sets RecipeInputs on the machine.
+func TestInputOverrideInYAML(t *testing.T) {
+	const yaml = `
+resources:
+  builder:
+    block_press:
+      recipe: "iron_block"
+      inputs:
+        iron_ingot: 2
+      outputs:
+        - target: "inventory"
+`
+	result, err := parser.Parse("test", yaml)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	if len(result.Errors) > 0 {
+		t.Fatalf("unexpected errors: %v", result.Errors)
+	}
+	if len(result.Machines) != 1 {
+		t.Fatalf("expected 1 machine, got %d", len(result.Machines))
+	}
+	m := result.Machines[0]
+	if m.RecipeInputs == nil {
+		t.Fatal("expected RecipeInputs to be set")
+	}
+	if got := m.RecipeInputs[models.IronIngot]; got != 2 {
+		t.Errorf("expected RecipeInputs[iron_ingot]=2, got %d", got)
+	}
+}
+
+// TestInputOverrideIsUsedInProcessing and TestDefaultRecipeCostIsUsedWhenNoOverride
+// both require engine.Tick and live in backend/engine/tick_test.go.
+
+// TestInputOverrideZeroIsRejected verifies that a zero input override is rejected.
+func TestInputOverrideZeroIsRejected(t *testing.T) {
+	const yaml = `
+resources:
+  builder:
+    block_press:
+      recipe: "iron_block"
+      inputs:
+        iron_ingot: 0
+      outputs:
+        - target: "inventory"
+`
+	result, err := parser.Parse("test", yaml)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Errors) == 0 {
+		t.Error("expected validation error for zero input quantity")
+	}
+}
+
+// TestInputOverrideDiffDetection verifies that changing input overrides shows up in Diff.
+func TestInputOverrideDiffDetection(t *testing.T) {
+	const yaml1 = `
+resources:
+  builder:
+    block_press:
+      recipe: "iron_block"
+      inputs:
+        iron_ingot: 2
+      outputs:
+        - target: "inventory"
+`
+	state := newTestState()
+	r1, _ := parser.Parse("test", yaml1)
+	parser.Apply(r1, state)
+	for _, m := range r1.Machines {
+		key := string(m.Type) + "." + m.ID
+		state.Machines[key] = m
+	}
+
+	// Change override from 2 → 3
+	const yaml2 = `
+resources:
+  builder:
+    block_press:
+      recipe: "iron_block"
+      inputs:
+        iron_ingot: 3
+      outputs:
+        - target: "inventory"
+`
+	r2, _ := parser.Parse("test", yaml2)
+	diff := parser.Diff("test", r2, state)
+
+	if len(diff.ToChange) != 1 {
+		t.Errorf("expected 1 to_change for input override change, got %d: %v", len(diff.ToChange), diff.ToChange)
+	}
+	if len(diff.ToAdd) != 0 || len(diff.ToDestroy) != 0 {
+		t.Errorf("expected no to_add/to_destroy, got add=%v destroy=%v", diff.ToAdd, diff.ToDestroy)
+	}
+}
+
+// TestDefaultRecipeCostIsUsedWhenNoOverride lives in backend/engine/tick_test.go.
+
 // TestApplyUpdatesExistingMachineRecipe verifies the Apply function updates the
 // recipe of an already-built machine when the YAML changes it.
 func TestApplyUpdatesExistingMachineRecipe(t *testing.T) {
